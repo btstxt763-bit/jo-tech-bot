@@ -2,94 +2,102 @@ require("dotenv").config();
 const {
   Client,
   GatewayIntentBits,
-  EmbedBuilder
+  ChannelType,
+  EmbedBuilder,
+  PermissionsBitField
 } = require("discord.js");
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildInvites,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent
   ]
 });
 
 // ===== IDs =====
-const WELCOME_CHANNEL_ID = "1453027053468254371";
 const AUTO_ROLE_ID = "1453027043661971518";
+const WELCOME_CHANNEL_ID = "1453027053468254371";
+const LOG_CHANNEL_ID = "1453027073013579999";
+const INVITE_LINK = "https://discord.gg/DmpH9XAR9B";
 
-// ===== INVITES CACHE =====
-const invitesCache = new Map();
+// 🔒 رومات Read Only
+const LOCKED_CHANNEL_IDS = [
+  "1453087770775130293",
+  "1453027053468254371",
+  "1453027055254900909",
+  "1453027056794210448",
+  "1453027058744561725",
+  "1453027060371951719"
+];
 
 // ===== READY =====
 client.once("ready", async () => {
   console.log(`✅ Bot Ready: ${client.user.tag}`);
 
-  // نخزن الانفايتات أول ما البوت يشتغل
-  for (const [guildId, guild] of client.guilds.cache) {
-    const invites = await guild.invites.fetch();
-    invitesCache.set(
-      guildId,
-      new Map(invites.map(inv => [inv.code, inv.uses]))
-    );
+  for (const guild of client.guilds.cache.values()) {
+    for (const channelId of LOCKED_CHANNEL_IDS) {
+      const channel = guild.channels.cache.get(channelId);
+      if (!channel) continue;
+
+      await channel.permissionOverwrites.edit(
+        guild.roles.everyone,
+        { SendMessages: false }
+      ).catch(() => {});
+
+      sendLog(guild, "قفل روم تلقائي", `🔒 تم قفل الروم ${channel}`);
+    }
   }
 });
 
 // ===== MEMBER JOIN =====
 client.on("guildMemberAdd", async (member) => {
+  // رول تلقائي
+  const role = member.guild.roles.cache.get(AUTO_ROLE_ID);
+  if (role) await member.roles.add(role).catch(() => {});
+
+  // رسالة ترحيب
+  const welcome = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
+  if (welcome) {
+    welcome.send(`👋 أهلاً بيك ${member} | عدد الأعضاء: **${member.guild.memberCount}**`);
+  }
+
+  // DM
   try {
-    // ===== رول تلقائي =====
-    const role = member.guild.roles.cache.get(AUTO_ROLE_ID);
-    if (role) await member.roles.add(role).catch(() => {});
-
-    // ===== تحديد مين اللي دعاه =====
-    let inviter = "غير معروف";
-    const newInvites = await member.guild.invites.fetch();
-    const oldInvites = invitesCache.get(member.guild.id);
-
-    for (const [code, invite] of newInvites) {
-      const oldUses = oldInvites?.get(code);
-      if (oldUses !== undefined && invite.uses > oldUses) {
-        inviter = invite.inviter
-          ? `<@${invite.inviter.id}>`
-          : "غير معروف";
-        break;
-      }
-    }
-
-    // تحديث الكاش
-    invitesCache.set(
-      member.guild.id,
-      new Map(newInvites.map(inv => [inv.code, inv.uses]))
-    );
-
-    // ===== روم الترحيب =====
-    const channel = await member.guild.channels.fetch(WELCOME_CHANNEL_ID);
-    if (!channel) return;
-
-    // ===== رسالة الترحيب =====
     const embed = new EmbedBuilder()
       .setColor("#5865F2")
-      .setTitle("👋 Welcome to JO-TECH Services")
+      .setTitle("👋 نورت سيرفر JO-TECH")
       .setDescription(
-        `أهلاً بيك ${member} 💙\n\n` +
-        `👤 تمت إضافتك بواسطة: ${inviter}\n` +
-        `👥 عدد أعضاء السيرفر الآن: **${member.guild.memberCount}**\n\n` +
-        `📌 اقرأ القوانين قبل أي حاجة\n` +
-        `🛠 شوف خدماتنا المتاحة\n` +
-        `🎫 محتاج مساعدة؟ افتح تكت`
+        `لو خرجت بالغلط تقدر ترجع من هنا 👇\n\n${INVITE_LINK}\n\n` +
+        "📌 شوف القوانين\n🛠 شوف الخدمات\n🎫 افتح تكت في أي وقت"
       )
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-      .setFooter({ text: "JO-TECH Services" })
       .setTimestamp();
 
-    await channel.send({ embeds: [embed] });
+    await member.send({ embeds: [embed] });
+  } catch {}
 
-  } catch (err) {
-    console.error("❌ Invite Tracker Error:", err);
-  }
+  sendLog(member.guild, "عضو دخل", `${member} دخل السيرفر`);
 });
+
+// ===== MEMBER LEAVE =====
+client.on("guildMemberRemove", (member) => {
+  sendLog(member.guild, "عضو خرج", `${member.user.tag} خرج من السيرفر`);
+});
+
+// ===== LOG FUNCTION =====
+async function sendLog(guild, title, description) {
+  const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+  if (!logChannel) return;
+
+  const embed = new EmbedBuilder()
+    .setColor("#2f3136")
+    .setTitle(`📜 ${title}`)
+    .setDescription(description)
+    .setTimestamp();
+
+  logChannel.send({ embeds: [embed] }).catch(() => {});
+}
 
 // ===== LOGIN =====
 client.login(process.env.TOKEN);
