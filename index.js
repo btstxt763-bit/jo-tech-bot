@@ -2,7 +2,6 @@ require("dotenv").config();
 const {
   Client,
   GatewayIntentBits,
-  ChannelType,
   EmbedBuilder,
   PermissionsBitField
 } = require("discord.js");
@@ -10,94 +9,109 @@ const {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.GuildMembers
   ]
 });
 
-// ===== IDs =====
-const AUTO_ROLE_ID = "1453027043661971518";
-const WELCOME_CHANNEL_ID = "1453027053468254371";
-const LOG_CHANNEL_ID = "1453027073013579999";
-const INVITE_LINK = "https://discord.gg/DmpH9XAR9B";
-
-// 🔒 رومات Read Only
-const LOCKED_CHANNEL_IDS = [
-  "1453087770775130293",
-  "1453027053468254371",
-  "1453027055254900909",
-  "1453027056794210448",
-  "1453027058744561725",
-  "1453027060371951719"
-];
-
-// ===== READY =====
-client.once("ready", async () => {
+client.once("ready", () => {
   console.log(`✅ Bot Ready: ${client.user.tag}`);
-
-  for (const guild of client.guilds.cache.values()) {
-    for (const channelId of LOCKED_CHANNEL_IDS) {
-      const channel = guild.channels.cache.get(channelId);
-      if (!channel) continue;
-
-      await channel.permissionOverwrites.edit(
-        guild.roles.everyone,
-        { SendMessages: false }
-      ).catch(() => {});
-
-      sendLog(guild, "قفل روم تلقائي", `🔒 تم قفل الروم ${channel}`);
-    }
-  }
 });
 
-// ===== MEMBER JOIN =====
+/* ================== MEMBER JOIN ================== */
 client.on("guildMemberAdd", async (member) => {
-  // رول تلقائي
-  const role = member.guild.roles.cache.get(AUTO_ROLE_ID);
-  if (role) await member.roles.add(role).catch(() => {});
-
-  // رسالة ترحيب
-  const welcome = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
-  if (welcome) {
-    welcome.send(`👋 أهلاً بيك ${member} | عدد الأعضاء: **${member.guild.memberCount}**`);
-  }
-
-  // DM
   try {
+    /* === Auto Role === */
+    const role = member.guild.roles.cache.get(process.env.AUTO_ROLE_ID);
+    if (role) await member.roles.add(role);
+
+    /* === Welcome Embed ONLY === */
+    const welcomeChannel = member.guild.channels.cache.get(
+      process.env.WELCOME_CHANNEL_ID
+    );
+
+    if (!welcomeChannel) return;
+
     const embed = new EmbedBuilder()
       .setColor("#5865F2")
-      .setTitle("👋 نورت سيرفر JO-TECH")
+      .setAuthor({
+        name: "Welcome to JO-TECH Services",
+        iconURL: member.guild.iconURL()
+      })
       .setDescription(
-        `لو خرجت بالغلط تقدر ترجع من هنا 👇\n\n${INVITE_LINK}\n\n` +
-        "📌 شوف القوانين\n🛠 شوف الخدمات\n🎫 افتح تكت في أي وقت"
+        `💙 أهلاً بيك ${member}\n\n` +
+        `👥 عدد أعضاء السيرفر الآن: **${member.guild.memberCount}**\n\n` +
+        `📌 اقرأ القوانين قبل أي حاجة\n` +
+        `🛠 شوف خدماتنا المتاحة\n` +
+        `🎫 محتاج مساعدة؟ افتح تكت`
       )
+      .setThumbnail(member.user.displayAvatarURL())
+      .setFooter({ text: "JO-TECH Services" })
       .setTimestamp();
 
-    await member.send({ embeds: [embed] });
-  } catch {}
+    await welcomeChannel.send({ embeds: [embed] });
 
-  sendLog(member.guild, "عضو دخل", `${member} دخل السيرفر`);
+    /* === LOG JOIN === */
+    const logChannel = member.guild.channels.cache.get(
+      process.env.LOG_CHANNEL_ID
+    );
+
+    if (logChannel) {
+      logChannel.send(
+        `🟢 **Member Joined:** ${member.user.tag} (${member.id})`
+      );
+    }
+  } catch (err) {
+    console.error("Join Error:", err);
+  }
 });
 
-// ===== MEMBER LEAVE =====
-client.on("guildMemberRemove", (member) => {
-  sendLog(member.guild, "عضو خرج", `${member.user.tag} خرج من السيرفر`);
+/* ================== MEMBER LEAVE ================== */
+client.on("guildMemberRemove", async (member) => {
+  try {
+    /* === DM User === */
+    await member.send(
+      `💔 خرجت من سيرفر **JO-TECH Services**  
+لو محتاج خدماتنا في أي وقت، السيرفر مفتوح ليك ❤️`
+    ).catch(() => {});
+
+    /* === LOG LEAVE === */
+    const logChannel = member.guild.channels.cache.get(
+      process.env.LOG_CHANNEL_ID
+    );
+
+    if (logChannel) {
+      logChannel.send(
+        `🔴 **Member Left:** ${member.user.tag} (${member.id})`
+      );
+    }
+  } catch (err) {
+    console.error("Leave Error:", err);
+  }
 });
 
-// ===== LOG FUNCTION =====
-async function sendLog(guild, title, description) {
-  const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
-  if (!logChannel) return;
+/* ================== LOCK CHANNELS ================== */
+client.on("ready", async () => {
+  const LOCK_CHANNELS = [
+    "welcome",
+    "rules",
+    "services",
+    "prices"
+  ];
 
-  const embed = new EmbedBuilder()
-    .setColor("#2f3136")
-    .setTitle(`📜 ${title}`)
-    .setDescription(description)
-    .setTimestamp();
+  client.guilds.cache.forEach(async (guild) => {
+    LOCK_CHANNELS.forEach(async (name) => {
+      const channel = guild.channels.cache.find(
+        (c) => c.name === name && c.isTextBased()
+      );
 
-  logChannel.send({ embeds: [embed] }).catch(() => {});
-}
+      if (channel) {
+        await channel.permissionOverwrites.edit(
+          guild.roles.everyone,
+          { SendMessages: false }
+        );
+      }
+    });
+  });
+});
 
-// ===== LOGIN =====
 client.login(process.env.TOKEN);
