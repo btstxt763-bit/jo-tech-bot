@@ -13,8 +13,27 @@ const client = new Client({
   ]
 });
 
-client.once("ready", () => {
-  console.log(`✅ Bot Ready: ${client.user.tag}`);
+/* ================== READY ================== */
+client.once("ready", async () => {
+  console.log(`✅ Core Bot Ready: ${client.user.tag}`);
+
+  // قفل رومات المعلومات تلقائي
+  const LOCK_CHANNEL_NAMES = ["welcome", "rules", "services", "prices"];
+
+  client.guilds.cache.forEach(async (guild) => {
+    LOCK_CHANNEL_NAMES.forEach(async (name) => {
+      const channel = guild.channels.cache.find(
+        (c) => c.name === name && c.isTextBased()
+      );
+
+      if (channel) {
+        await channel.permissionOverwrites.edit(
+          guild.roles.everyone,
+          { SendMessages: false }
+        );
+      }
+    });
+  });
 });
 
 /* ================== MEMBER JOIN ================== */
@@ -22,13 +41,12 @@ client.on("guildMemberAdd", async (member) => {
   try {
     /* === Auto Role === */
     const role = member.guild.roles.cache.get(process.env.AUTO_ROLE_ID);
-    if (role) await member.roles.add(role);
+    if (role) await member.roles.add(role).catch(() => {});
 
-    /* === Welcome Embed ONLY === */
+    /* === Welcome Embed (ONE ONLY) === */
     const welcomeChannel = member.guild.channels.cache.get(
       process.env.WELCOME_CHANNEL_ID
     );
-
     if (!welcomeChannel) return;
 
     const embed = new EmbedBuilder()
@@ -54,12 +72,12 @@ client.on("guildMemberAdd", async (member) => {
     const logChannel = member.guild.channels.cache.get(
       process.env.LOG_CHANNEL_ID
     );
-
     if (logChannel) {
       logChannel.send(
         `🟢 **Member Joined:** ${member.user.tag} (${member.id})`
       );
     }
+
   } catch (err) {
     console.error("Join Error:", err);
   }
@@ -70,15 +88,14 @@ client.on("guildMemberRemove", async (member) => {
   try {
     /* === DM User === */
     await member.send(
-      `💔 خرجت من سيرفر **JO-TECH Services**  
-لو محتاج خدماتنا في أي وقت، السيرفر مفتوح ليك ❤️`
+      `💙 خرجت من سيرفر **JO-TECH Services**  
+لو احتاجت أي خدمة أو رجعت تغير رأيك، السيرفر مفتوح ليك دايمًا ❤️`
     ).catch(() => {});
 
     /* === LOG LEAVE === */
     const logChannel = member.guild.channels.cache.get(
       process.env.LOG_CHANNEL_ID
     );
-
     if (logChannel) {
       logChannel.send(
         `🔴 **Member Left:** ${member.user.tag} (${member.id})`
@@ -89,29 +106,5 @@ client.on("guildMemberRemove", async (member) => {
   }
 });
 
-/* ================== LOCK CHANNELS ================== */
-client.on("ready", async () => {
-  const LOCK_CHANNELS = [
-    "welcome",
-    "rules",
-    "services",
-    "prices"
-  ];
-
-  client.guilds.cache.forEach(async (guild) => {
-    LOCK_CHANNELS.forEach(async (name) => {
-      const channel = guild.channels.cache.find(
-        (c) => c.name === name && c.isTextBased()
-      );
-
-      if (channel) {
-        await channel.permissionOverwrites.edit(
-          guild.roles.everyone,
-          { SendMessages: false }
-        );
-      }
-    });
-  });
-});
-
+/* ================== LOGIN ================== */
 client.login(process.env.TOKEN);
